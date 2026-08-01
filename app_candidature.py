@@ -209,24 +209,28 @@ with onglet_generation:
                         mettre_a_jour_tracker(resultats['entreprise'], resultats['poste'], lien_auto)
                         st.success("✅ Candidature ajoutée au fichier de suivi !")
                         
-    with tab_manuel:
-        st.write("Si le Mode Magique échoue (bloqué par le site), utilise ce formulaire.")
-        entreprise = st.text_input("🏢 Nom de l'entreprise")
-        poste = st.text_input("🎯 Titre du poste")
-        lien_manuel = st.text_input("🔗 Lien vers l'offre (pour le suivi)")
-        description = st.text_area("📋 Description complète", height=150)
-        btn_manuel = st.button("✨ Générer manuellement", type="primary", key="btn_manuel")
+   with tab_manuel:
+        st.write("Anti-robot bloquant ? Fais `Ctrl+A` puis `Ctrl+C` sur la page de l'offre et colle TOUT ici. L'IA fera le tri.")
+        
+        lien_manuel = st.text_input("🔗 Lien vers l'offre (pour ton fichier de suivi Excel)")
+        texte_brut = st.text_area("📋 Colle TOUT le texte de la page ici (même avec les menus)", height=200)
+        btn_manuel = st.button("✨ Analyser le texte et Générer", type="primary", key="btn_manuel")
         
         if btn_manuel:
-            if not api_key or fichier_cv is None or not entreprise or not poste:
-                st.warning("⚠️ Remplis les champs nécessaires et uploade ton CV.")
+            if not api_key or fichier_cv is None or not texte_brut:
+                st.warning("⚠️ Remplis la zone de texte, uploade ton CV et mets ta clé API.")
             else:
-                with st.spinner("Rédaction en cours..."):
+                with st.spinner("Analyse du texte brouillon en cours..."):
                     cv_texte = extraire_texte_pdf(fichier_cv)
-                    lettre = generer_lettre_manuelle(api_key, entreprise, poste, description, cv_texte)
-                    st.text_area("Lettre générée :", value=lettre, height=400, key="lettre_manuelle")
-                    mettre_a_jour_tracker(entreprise, poste, lien_manuel)
-                    st.success("✅ Candidature ajoutée au fichier de suivi !")
+                    resultats, erreur = generer_lettre_depuis_texte(api_key, texte_brut, cv_texte, lien_manuel)
+                    
+                    if erreur:
+                        st.error(erreur)
+                    else:
+                        st.success(f"✅ Offre détectée dans le texte : {resultats['poste']} chez {resultats['entreprise']}")
+                        st.text_area("Lettre générée :", value=resultats['lettre'], height=400, key="lettre_texte")
+                        mettre_a_jour_tracker(resultats['entreprise'], resultats['poste'], lien_manuel)
+                        st.success("✅ Candidature ajoutée au fichier de suivi !")
 
 with onglet_suivi:
     st.subheader("Historique des candidatures")
