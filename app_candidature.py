@@ -30,19 +30,29 @@ def mettre_a_jour_tracker(entreprise, poste, lien):
     df.to_excel(FICHIER_EXCEL, index=False)
     return df
 
-def generer_lettre(api_key, entreprise, poste, description_offre):
-    """Génère la lettre via OpenAI."""
+def generer_lettre(api_key, entreprise, poste, description_offre, cv_texte):
+    """Génère la lettre via OpenAI en croisant l'offre et le CV."""
     client = OpenAI(api_key=api_key)
     
     prompt_systeme = """
     Tu es un expert en recrutement. Ton but est de rédiger une lettre de motivation percutante, 
-    structurée et professionnelle pour un candidat postulant dans le domaine de l'économie, de l'analyse ou du conseil.
+    structurée et professionnelle.
     Règles strictes :
     - Va droit au but, adopte un ton analytique et orienté résultats.
+    - Fais le lien EXPLICITE entre les compétences demandées dans l'offre et les expériences du candidat.
+    - Ne mens pas et n'invente pas d'expériences que le candidat n'a pas.
     - Évite le jargon creux et les formules de politesse interminables.
     """
     
-    prompt_utilisateur = f"Rédige une lettre de motivation pour le poste de '{poste}' chez '{entreprise}'. Voici l'offre :\n{description_offre}"
+    prompt_utilisateur = f"""
+    Rédige une lettre de motivation pour le poste de '{poste}' chez '{entreprise}'.
+    
+    Voici le profil et les expériences du candidat (CV) :
+    {cv_texte}
+    
+    Voici la description de l'offre d'emploi :
+    {description_offre}
+    """
 
     try:
         reponse = client.chat.completions.create(
@@ -61,12 +71,18 @@ def generer_lettre(api_key, entreprise, poste, description_offre):
 
 st.title("🚀 Mon Assistant de Candidature")
 
-# Barre latérale (Sidebar) pour les paramètres
+# Barre latérale (Sidebar) pour les paramètres et le CV
 with st.sidebar:
     st.header("⚙️ Configuration")
     api_key = st.text_input("Clé API OpenAI", type="password", help="Ta clé ne sera pas sauvegardée.")
+    
     st.markdown("---")
-    st.write("Cet outil génère des lettres sur-mesure et alimente automatiquement ton fichier Excel de suivi.")
+    
+    st.header("📄 Mon Profil")
+    cv_texte = st.text_area("Colle ici ton CV ou un résumé de ton parcours", height=300, help="Copie-colle le texte de ton CV PDF ou LinkedIn.")
+    
+    st.markdown("---")
+    st.write("Cet outil génère des lettres sur-mesure basées sur TES expériences.")
 
 # Zone principale avec des onglets
 onglet_generation, onglet_suivi = st.tabs(["✍️ Nouvelle Candidature", "📊 Mon Suivi (Excel)"])
@@ -88,11 +104,13 @@ with onglet_generation:
         if bouton_generer:
             if not api_key:
                 st.error("⚠️ Tu dois renseigner ta clé API dans le menu à gauche.")
+            elif not cv_texte:
+                st.warning("⚠️ N'oublie pas de coller ton CV dans le menu à gauche pour que l'IA personnalise la lettre.")
             elif not entreprise or not poste or not description:
-                st.warning("⚠️ Remplis au moins l'entreprise, le poste et la description.")
+                st.warning("⚠️ Remplis au moins l'entreprise, le poste et la description de l'offre.")
             else:
-                with st.spinner("Rédaction en cours..."):
-                    lettre = generer_lettre(api_key, entreprise, poste, description)
+                with st.spinner("Analyse du CV et rédaction en cours..."):
+                    lettre = generer_lettre(api_key, entreprise, poste, description, cv_texte)
                     st.text_area("Lettre générée :", value=lettre, height=400)
                     
                     # Mise à jour de l'Excel en arrière-plan
