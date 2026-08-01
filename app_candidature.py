@@ -3,15 +3,14 @@ import pandas as pd
 import os
 from datetime import datetime
 from openai import OpenAI
+import PyPDF2
 
 # --- CONFIGURATION ---
 FICHIER_EXCEL = "suivi_candidatures.xlsx"
 
-# Paramétrage de la page Web
 st.set_page_config(page_title="Assistant de Candidature", page_icon="💼", layout="wide")
 
 def mettre_a_jour_tracker(entreprise, poste, lien):
-    """Met à jour le fichier Excel et retourne le DataFrame."""
     nouvelle_candidature = {
         "Date": datetime.now().strftime("%Y-%m-%d"),
         "Entreprise": entreprise,
@@ -20,18 +19,26 @@ def mettre_a_jour_tracker(entreprise, poste, lien):
         "Statut": "Candidature préparée",
         "Relance prévue le": ""
     }
-    
     if not os.path.exists(FICHIER_EXCEL):
         df = pd.DataFrame([nouvelle_candidature])
     else:
         df = pd.read_excel(FICHIER_EXCEL)
         df = pd.concat([df, pd.DataFrame([nouvelle_candidature])], ignore_index=True)
-        
     df.to_excel(FICHIER_EXCEL, index=False)
     return df
 
+def extraire_texte_pdf(fichier_pdf):
+    """Extrait le texte d'un fichier PDF uplaodé."""
+    try:
+        lecteur = PyPDF2.PdfReader(fichier_pdf)
+        texte = ""
+        for page in lecteur.pages:
+            texte += page.extract_text() + "\n"
+        return texte
+    except Exception as e:
+        return f"Erreur lors de la lecture du PDF : {str(e)}"
+
 def generer_lettre(api_key, entreprise, poste, description_offre, cv_texte):
-    """Génère la lettre via OpenAI en croisant l'offre et le CV."""
     client = OpenAI(api_key=api_key)
     
     prompt_systeme = """
@@ -46,10 +53,8 @@ def generer_lettre(api_key, entreprise, poste, description_offre, cv_texte):
     
     prompt_utilisateur = f"""
     Rédige une lettre de motivation pour le poste de '{poste}' chez '{entreprise}'.
-    
     Voici le profil et les expériences du candidat (CV) :
     {cv_texte}
-    
     Voici la description de l'offre d'emploi :
     {description_offre}
     """
@@ -78,8 +83,8 @@ with st.sidebar:
     
     st.markdown("---")
     
-    st.header("📄 Mon Profil")
-    cv_texte = st.text_area("Colle ici ton CV ou un résumé de ton parcours", height=300, help="Copie-colle le texte de ton CV PDF ou LinkedIn.")
+    st.header("📄 Mon Profil (PDF)")
+    fichier_cv = st.file_uploader("Uploade ton CV au format PDF", type=["pdf"])
     
     st.markdown("---")
     st.write("Cet outil génère des lettres sur-mesure basées sur TES expériences.")
@@ -104,16 +109,20 @@ with onglet_generation:
         if bouton_generer:
             if not api_key:
                 st.error("⚠️ Tu dois renseigner ta clé API dans le menu à gauche.")
-            elif not cv_texte:
-                st.warning("⚠️ N'oublie pas de coller ton CV dans le menu à gauche pour que l'IA personnalise la lettre.")
+            elif fichier_cv is None:
+                st.warning("⚠️ N'oublie pas d'uploader ton CV (PDF) dans le menu à gauche.")
             elif not entreprise or not poste or not description:
                 st.warning("⚠️ Remplis au moins l'entreprise, le poste et la description de l'offre.")
             else:
-                with st.spinner("Analyse du CV et rédaction en cours..."):
+                with st.spinner("Lecture du PDF et rédaction en cours..."):
+                    # 1. Extraction du texte du PDF
+                    cv_texte = extraire_texte_pdf(fichier_cv)
+                    
+                    # 2. Génération de la lettre
                     lettre = generer_lettre(api_key, entreprise, poste, description, cv_texte)
                     st.text_area("Lettre générée :", value=lettre, height=400)
                     
-                    # Mise à jour de l'Excel en arrière-plan
+                    # 3. Mise à jour de l'Excel en arrière-plan
                     mettre_a_jour_tracker(entreprise, poste, lien)
                     st.success("✅ Candidature ajoutée au fichier de suivi !")
 
