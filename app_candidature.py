@@ -145,6 +145,32 @@ def generer_lettre_auto(api_key, url, cv_texte):
     except Exception as e:
         return None, f"Erreur d'analyse IA : {str(e)}"
 
+def generer_lettre_depuis_texte(api_key, texte_brut, cv_texte, lien):
+    client = OpenAI(api_key=api_key)
+    prompt_systeme = """
+    Tu es un assistant de recrutement. L'utilisateur a copié-collé l'intégralité d'une page web d'offre d'emploi (ce texte peut être très brouillon et contenir des menus ou des pubs).
+    
+    Ta mission :
+    1. Trouver le nom de l'entreprise.
+    2. Trouver le titre du poste.
+    3. Rédiger la lettre en adaptant STRICTEMENT le modèle fourni.
+    
+    Réponds OBLIGATOIREMENT en JSON avec les clés : "entreprise", "poste", "lettre".
+    """
+    
+    prompt_utilisateur = f"TEXTE DE L'OFFRE :\n{texte_brut}\n\nCV :\n{cv_texte}\n\nMODELE :\n{LETTRE_MODELE}"
+
+    try:
+        reponse = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            response_format={ "type": "json_object" },
+            messages=[{"role": "system", "content": prompt_systeme}, {"role": "user", "content": prompt_utilisateur}],
+            temperature=0.1
+        )
+        return json.loads(reponse.choices[0].message.content), None
+    except Exception as e:
+        return None, f"Erreur IA : {str(e)}"
+
 
 # --- INTERFACE GRAPHIQUE ---
 st.title("🚀 Mon Assistant de Candidature")
