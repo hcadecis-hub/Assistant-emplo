@@ -3,3 +3,4 @@ pandas
 openpyxl
 openai
 PyPDF2
+requests
