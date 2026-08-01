@@ -85,39 +85,63 @@ def generer_lettre_manuelle(api_key, entreprise, poste, description, cv_texte):
         return f"Erreur : {str(e)}"
 
 def generer_lettre_auto(api_key, url, cv_texte):
-    # 1. Lire la page web via l'API Jina Reader (qui contourne certains blocages et extrait le texte utile)
+    # 1. Lire la page web via l'API Jina Reader
     try:
         reponse_web = requests.get(f"https://r.jina.ai/{url}")
         texte_page = reponse_web.text
     except Exception as e:
         return None, f"Impossible de lire le lien : {str(e)}"
 
-    # 2. Demander à l'IA d'extraire les infos ET de rédiger la lettre en format JSON
+    # 2. Demander à l'IA d'extraire les infos
     client = OpenAI(api_key=api_key)
+    
     prompt_systeme = """
-    Tu es un assistant de recrutement automatisé. Tu vas recevoir le texte brut d'une page web contenant une offre d'emploi, ainsi que le profil du candidat.
+    Tu es un assistant de recrutement automatisé. Tu reçois la page web d'une offre d'emploi, et le CV d'un candidat.
     
-    Ta mission :
-    1. Identifier et extraire le nom de l'entreprise qui recrute.
-    2. Identifier et extraire le titre exact du poste.
-    3. Rédiger la lettre de motivation en adaptant STRICTEMENT le modèle de lettre fourni au poste et à l'entreprise.
+    Ta mission STRICTE :
+    1. Extraire le nom de l'entreprise qui recrute UNIQUEMENT à partir de la section "PAGE WEB".
+    2. Extraire le titre du poste UNIQUEMENT à partir de la section "PAGE WEB".
+    3. Rédiger la lettre de motivation en adaptant le modèle fourni.
     
-    Tu DOIS impérativement répondre en format JSON valide avec exactement ces 3 clés :
-    "entreprise" (le nom de l'entreprise), "poste" (le titre du poste), et "lettre" (le texte complet de la lettre).
+    ⚠️ RÈGLE ANTI-HALLUCINATION : Ne confonds JAMAIS les expériences du candidat (dans la section CV) avec l'offre cible. 
+    Si la section "PAGE WEB" ne contient pas d'offre d'emploi claire (message d'erreur, captcha, page vide), mets la valeur "ERREUR" pour les clés "entreprise" et "poste".
+    
+    Réponds obligatoirement en format JSON avec ces 3 clés : "entreprise", "poste", "lettre".
     """
     
-    prompt_utilisateur = f"Contenu de la page web :\n{texte_page}\n\nCV :\n{cv_texte}\n\nModèle de lettre :\n{LETTRE_MODELE}"
+    # On sépare visuellement très clairement les données pour l'IA
+    prompt_utilisateur = f"""
+    --- DÉBUT DE LA PAGE WEB (OFFRE CIBLE) ---
+    {texte_page}
+    --- FIN DE LA PAGE WEB ---
+    
+    --- DÉBUT DU CV DU CANDIDAT (SON PASSÉ) ---
+    {cv_texte}
+    --- FIN DU CV ---
+    
+    --- MODÈLE DE LETTRE À UTILISER ---
+    {LETTRE_MODELE}
+    """
 
     try:
         reponse = client.chat.completions.create(
             model="gpt-3.5-turbo",
-            response_format={ "type": "json_object" }, # Force l'IA à répondre en JSON structuré
-            messages=[{"role": "system", "content": prompt_systeme}, {"role": "user", "content": prompt_utilisateur}],
-            temperature=0.4
+            response_format={ "type": "json_object" },
+            messages=[
+                {"role": "system", "content": prompt_systeme}, 
+                {"role": "user", "content": prompt_utilisateur}
+            ],
+            temperature=0.1 # Température très basse pour interdire la créativité / l'hallucination
         )
-        # Convertir la réponse texte de l'IA en dictionnaire Python
+        
         donnees = json.loads(reponse.choices[0].message.content)
+        
+        # Sécurité : Si l'IA signale qu'elle n'a pas trouvé d'offre dans la page web
+        if donnees.get("entreprise") == "ERREUR" or donnees.get("poste") == "ERREUR":
+            return None, "❌ Impossible de lire l'offre sur ce site web (blocage anti-robot). Utilise l'onglet 'Mode Manuel'."
+            
         return donnees, None
+        
     except Exception as e:
         return None, f"Erreur d'analyse IA : {str(e)}"
 
